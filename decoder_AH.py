@@ -4,7 +4,7 @@ from distinct_permutations import distinct_permutations
 from itertools import chain, combinations, product
 from tools import sort_np_array_rows_lexicographically
 
-#returns powerset without the initial empty tupel
+#returns powerset without the initial empty tuple
 def powerset(s: list):
     return chain.from_iterable(combinations(s, r) for r in range(1, len(s)+1))
 
@@ -26,8 +26,8 @@ def recursive_step(l: list):
         new_l.pop(0)
     return recursive_step(new_l)
 
-class Vertex(simplex2.Eji_LinComb):
 
+class Vertex(simplex2.Eji_LinComb):
     #Note that adding does not commute with other class operations, in particular not with value or to_array
     #e.g. a.value(dim)+b.value(dim) != (a+b).value(dim)
     def __add__(self, other):
@@ -48,8 +48,8 @@ class Vertex(simplex2.Eji_LinComb):
         ans._eji_counts = sort_np_array_rows_lexicographically(self._eji_counts)
         return ans
         
+
 class Simplex():
-    
     def __init__(self, n: int, k: int, vlist: list[Vertex]):
         self.n = n
         self.k = k
@@ -77,7 +77,6 @@ class Simplex():
         new_vertices = [vertex.get_canonical_form() for vertex in self.vlist]
         return Simplex(self.n, self.k, new_vertices)
                 
-
     def barycentric_subdivision(self):
         barycentre = sum(self.vlist, start=Vertex(self.n, self.k))
         simplex_list =[]
@@ -95,8 +94,6 @@ class Simplex():
             simplex_list.append(Simplex(self.n, self.k, temp_vlist))
         return simplex_list
     
-
-        
     def projected_point(self, p: np.ndarray):
         assert len(p) == self.dim
         n = self.num
@@ -118,7 +115,6 @@ class Simplex():
 
 
 class SimplexMap():
-    
     def __init__(self, n, k, subdivided = True):
         self.n = n
         self.k = k
@@ -134,7 +130,6 @@ class SimplexMap():
         self.slist = self.remove_equivalent_simplices(n, k, simplex_list)
         print([s.vlist for s in self.slist])
         print("Post_reduction length: ", len(self.slist))
-
 
     def list_to_vertex(self, lt: list, n, k, kmax):
         assert len(lt) == n
@@ -159,7 +154,6 @@ class SimplexMap():
             simplex_list.append(Simplex(n, kmax, vlist))
         return simplex_list
 
-
     def simplices_across_all_k(self, n, k):
         superlist = []
         simplex_list = []
@@ -175,7 +169,6 @@ class SimplexMap():
             if simplex not in reduced_list:
                 reduced_list.append(simplex.get_canonical_form())
         return reduced_list
-        
     
     def choose_simplex(self, p: np.ndarray):
         dist_list = []
@@ -193,14 +186,12 @@ class SimplexMap():
 
 
 class Decoder():                
-
     def decode(self, n ,k , data):
         ans = np.zeros(shape = (n,k))
         for i in range(n):
             ans[i] += data[:k]
 
         data = data[k:]
-        
         deltas, ejis = SimplexMap(n,k).get_lin_comb(data)
         ejis = [eji.to_array() for eji in ejis]
         print(deltas)
@@ -208,6 +199,7 @@ class Decoder():
             ans += deltas[i]*ejis[i]
         
         return ans
+
 
 if __name__ == "__main__":
     n = 2
@@ -226,15 +218,3 @@ if __name__ == "__main__":
     decoder = Decoder()
     decoded_input = decoder.decode(2, 2, output[0])
     print(f"{decoded_input}")
-    
-        
-        
-    
-        
-        
-        
-            
-                
-
-        
-    
