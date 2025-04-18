@@ -24,6 +24,7 @@ import              C0_sorting_embedder_for_list_of_reals_as_multiset as embedde
 import data_sources
 import numpy as np
 from tools import __line__, permute_columns_except_first
+import tuple_ize
 
 def self_test_realprojectivespace_embedder(embedder):
     for inp, out in embedder.unit_test_input_output_pairs:
@@ -326,3 +327,6 @@ def test_various_embedders():
        absolute_tolerance=1e-7,
     )
 
+def test_tuple_ize():
+    for a_in, a_out in tuple_ize.tuple_ize.unit_test_input_output_pairs:
+         assert tuple_ize.tuple_ize(a_in) == a_out

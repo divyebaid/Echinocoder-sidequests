@@ -60,9 +60,14 @@ In principle the method could be re-written to embed into just $2 n k + 1$ reals
 * A small optimisation of the above method (implemented as [Cinf_numpy_complexPacked_embedder_for_list_of_reals_as_realprojectivespace](Cinf_numpy_complexPacked_embedder_for_list_of_reals_as_realprojectivespace.py))  reduces the order by one when $n>0$ and $n$ is even.
 
 
-## Testing/examples
+## Examples
 
-[example.py](example.py) is a simple example showing how some of the embedders could be used.
+[example.py](example.py) is a simple example script showing how some of the embedders could be used. These examples use the old-style monolithic calculators listed in the table above.
+
+[nice_examples.sh](nice_examples.sh) is a short script which exercises [play_simplex_encoders_via_EncDec.py](play_simplex_encoders_via_EncDec.py) in a few different ways. It uses the new-style [EncDec.py](EncDec.py)-based calculators -- however they only extend to Simplex1 and Simplex 2. Currently the
+[nice_examples.sh](nice_examples.sh) script only does the pre-processing and canonicalisation stages that would precede the actual embedding. That is bbecause they are the important stages that are currently being studied.
+
+## Testing
 
 Various unit tests can be run with [pytest](https://docs.pytest.org).  pytest runs all functions begining test_ in files with names matching test_XXXX.py .   Note that running with "pytest -s" prevents pytest hiding stdout.
 

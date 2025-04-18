@@ -1,255 +1,395 @@
 #!/usr/bin/env python
+
+from collections.abc import Iterable
 from fractions import Fraction
 from itertools import pairwise
 import numpy as np
+import tools
+from ndenumerate_slice import ndenumerate_fixed_axes_slice
 
 from tools import numpy_array_of_frac_to_str
+from tuple_ize import tuple_ize
 
-def pretty_print_lin_comb(lin_comb):
-    for coeff, basis_elt in lin_comb:
-        print(float(coeff), numpy_array_of_frac_to_str(basis_elt))
+class MonoLinComb:
+    def __init__(self, coeff, basis_vec):
+        self.coeff = coeff
+        self.basis_vec = basis_vec
 
+    def __repr__(self):
+        return f"MonoLinComb({repr(self.coeff)}, {repr(self.basis_vec)})"
 
-class EncDec:
+    def __eq__(self, other):
+        return self.coeff == other.coeff and np.array_equal(self.basis_vec, other.basis_vec)
 
-    def __init__(self, pass_forward, pass_backward):
-        self.pass_forward = pass_forward
-        self.pass_backward = pass_backward
+    def __len__(self):
+        return 1 # We are a mono (mono=1) lin comb after all.
 
-    def get_default_output_dict(self, input_dict, debug=False):
-        return EncDec.get_default_dict(input_dict, self.pass_forward, debug)
+class LinComb:
+    def __init__(self, initialiser=None):
+        self.coeffs = []
+        self.basis_vecs = []
+        if initialiser is not None:
+            self += initialiser
 
-    def get_default_input_dict(self, output_dict, debug=False):
-        return EncDec.get_default_dict(output_dict, self.pass_backward, debug)
+    def mlcs(self): # MLCS = Mono Lin CombinationS
+        return (MonoLinComb(c,b) for c,b in zip(self.coeffs, self.basis_vecs))
 
+    def __len__(self):
+        assert len(self.coeffs) == len(self.basis_vecs)
+        return len(self.coeffs)
 
-    @staticmethod
-    def get_default_dict(some_dict, some_pass_through, debug=False):
+    def to_numpy_array(self):
+        ans = None
+        first = True
+        for c,b in zip(self.coeffs, self.basis_vecs):
+            if first == True:
+                ans = c*np.asarray(b)
+                first = False
+            else:
+                ans += c*np.asarray(b)
+        return ans
 
-        if some_pass_through is False or some_pass_through is None or not some_pass_through:
-            ret_dict = dict()
-            if debug:
-                print(f"some_pass_through was False or None")
-        elif some_pass_through is True:
-            ret_dict = some_dict
-            if debug:
-                print(f"some_pass_through was True")
+    def __add__(self, stuff):
+        return LinComb((self, stuff))
+
+    def __iadd__(self, stuff):
+        #print(f"In iadd see stuff of type {stuff}")
+        # Note that __add__ does not automatically consolidate. I.e. (3i+2j) + (5i) becomes (3i+2j+5i) not (8i+2j).
+        # It is the user's responsibility to perform consolidation manually if they wish it to happen!!
+        if isinstance(stuff, LinComb):
+            self.coeffs.extend(stuff.coeffs)
+            self.basis_vecs.extend(stuff.basis_vecs)
+            return self
+
+        if isinstance(stuff, MonoLinComb):
+            self.coeffs.append(stuff.coeff)
+            self.basis_vecs.append(stuff.basis_vec)
+            return self
+
+        if isinstance(stuff, Iterable):
+            for elt in stuff:
+                self += elt # Recurse!
+            return self
+        
+        print(f"DDDD {stuff}")
+        raise ValueError("LinComb.__iadd__ only knows how to add LimCombs and MonoLinCombs and iterables containing those.")
+
+    def is_consolidated(self):
+        # Need to convert 2D numpy arrays to tup(tup()) and 1D numpy arrays to tup() so that they are hashable:
+        
+        #print(f"Being asked for consolidation state of {self.basis_vecs}")
+        basis_vecs_as_tuptups = [ tuple_ize(bv) for bv in self.basis_vecs ]
+        #print(f"turned {self.basis_vecs} into {basis_vecs_as_tuptups}")
+        return len(set(basis_vecs_as_tuptups)) == len(basis_vecs_as_tuptups)
+
+    def __repr__(self):
+        tmp = list(MonoLinComb(c,np.asarray(b)) for c,b in zip(self.coeffs, self.basis_vecs))
+        return str(f"LinComb({tmp})")
+
+    def __eq__(self, other):
+        if len(self.coeffs) != len(other.coeffs):
+            return false
+
+        assert len(self.coeffs) == len(self.basis_vecs)
+        assert len(other.coeffs) == len(other.basis_vecs)
+
+        # Note that the order is required to match here, so eq means "same lin com in same order".
+        for i,j in zip(self.mlcs(), other.mlcs()):
+            if i != j:
+               return False
+
+        return True
+
+def array_to_lin_comb(arr: np.array, fixed_axes=None, debug=False):
+        lin_comb = LinComb()
+        if fixed_axes is None:
+            locations = np.ndenumerate(arr)
         else:
-            # Assime some_pass_through is a list
-            if debug:
-                print(f"some_pass_through is assumed to be a list")
-            ret_dict = {k: v for k, v in some_dict.items() if k in some_pass_through}
+            locations = ndenumerate_fixed_axes_slice(arr, fixed_axes=fixed_axes)
 
-        if debug:
-            print(f"ret_dict initial value is\n{ret_dict}")
+        for index, coeff in locations:
+            #if debug:
+            #    print(f"Considering pos {index} and coeff {coeff}.")
+            basis_vec = np.zeros_like(arr)
+            basis_vec[index] = 1
+            lin_comb += MonoLinComb(coeff, basis_vec)
+        return lin_comb
 
-        return ret_dict
-
-
-    def encode(self, input_dict):
-        """
-        Encoder-Decoders should implement.
-        input_dict is a dictionary of key,value pairs.
-        output_dict should be a dictionary of key,value pairs.
-        encode maps input -> output
-        """
-        raise NotImplementedError()
-
-    def decode(self, output_dict):
-        """
-        Encoder-Decoders should implement.
-        input_dict is a dictionary of key,value pairs.
-        output_dict should be a dictionary of key,value pairs.
-        decode maps output -> input
-        """
-        raise NotImplementedError()
-
-class PassThrough(EncDec):
-
-    def __init__(self):
-        super().__init__(pass_forward=False, pass_backward=False)
-
-    def encode(self, input_dict):
-        return input_dict
-
-    def decode(self, output_dict):
-        return output_dict
-
-class MergeLinCombs(EncDec):
-    def __init__(self, input_lin_comb_names, output_lin_comb_name, pass_forward=None, pass_backward=None):
-        """
-        Merges linear combinations in the input dictionary and writes them to the output dictionary.
-        E.g. could combing  input["diff1"]=[(2,"i"), (5,"j")] and input["offset"] = [(3,"k")] into
-        output["out"] = [(2,"i"), (5,"j"), (3,"k")].
-
-        Args:
-            input_lin_comb_names: a list of lin_comb names, e.g. ["diff1", "offset"].
-            output_lin_comb_name: the name of the output lin comb, e.g. "out".
-        """
-        super().__init__(pass_forward, pass_backward)
-        self.input_lin_comb_names = input_lin_comb_names
-        self.output_lin_comb_name = output_lin_comb_name
-
-    def encode(self, input_dict, debug=False):
-        out_dict = self.get_default_output_dict(input_dict, debug)
-        out_lin_comb = []
-        for lin_comb_name in self.input_lin_comb_names:
-            lin_comb = input_dict[lin_comb_name]
-            out_lin_comb.extend(lin_comb)
-        out_dict[self.output_lin_comb_name] = out_lin_comb
-        return out_dict
-
-
-class ArrayToLinComb(EncDec):
-    def __init__(self, input_array_name, output_lin_comb_name, pass_forward=None, pass_backward=None):
-        super().__init__(pass_forward, pass_backward)
-        self.input_array_name = input_array_name
-        self.output_lin_comb_name = output_lin_comb_name
-
-    def encode(self, input_dict, debug=False):
-        if self.input_array_name not in input_dict:
-            raise ValueError(f"Expected {self.input_array_name} in {input_dict}.")
-
-        output_dict = self.get_default_output_dict(input_dict, debug)
-        arr = np.asarray(input_dict[self.input_array_name])
-        result = []
-        for index, value in np.ndenumerate(arr):
-            basis = np.zeros_like(arr)
-            basis[index] = 1
-            result.append((value, basis))
-
-        output_dict[self.output_lin_comb_name] = result
-        if debug:
-            print(f"About to return {output_dict}")
-        return output_dict
-
-class Chain(EncDec):
-    def __init__(self, encoder_decoder_list):
-        self.encoder_decoder_list = encoder_decoder_list
-
-    def encode(self, input_dict, debug=False):
-        for encoder in self.encoder_decoder_list:
-            if debug:
-                print(f"Chain is about to run {encoder.__class__}")
-            input_dict = encoder.encode(input_dict, debug=debug)
-        return input_dict
-
-    def decode(self, output_dict, debug=False):
-        for encoder in reversed(self.encoder_decoder_list):
-            output_dict = encoder.encode(output_dict, debug=debug)
-        return output_dict
-
-
-class BarycentricSubdivide(EncDec):
+def barycentric_subdivide(lin_comb: LinComb, return_offset_separately=False, preserve_scale=True, debug=False, use_assertion_self_test=False):
     """
-    Encoding:
-        * looks for a dictionary entry named self.input_name which is assumed to be a point in barycentric coordinates,
-          i.e. a linear combination of basis element representing the vertices of a simplex,
-        * calculates how this poing would be expressed ith respect to a different basis corresponding to a barycentric
-          subdivision of the simplex,
-        * creates a dictionary with an entry for self.output_name carrying the resulting linear combination, and
-        * if "pass_through" is true, the encoder (and decode) will pass through all other elements of the input
-          dictionary which do not result in overwriting of one of lin comb output.
         * If preserve_scale is True (default) then the sum of the coeffiencients is preserved. Equivalently, the one
           norm of each basis vector iw preserved at 1 if already at 1.
-
-        A linear combination is assumed to be represented as a list of pairs -- with the first element of each pair
-        being the coefficient and the second element of each pair being the corresponding basis verctor. I.e.
-        [ (2, ei), (1, ej), (3, ek)]
-        might represent the vector (2,1,3) with respect to the usual cartesian basis.
-
-    Decoding:
-        Reverse of encoding.
     """
-    def __init__(self, input_name, diff_output_name, offset_output_name, pass_forward=None, pass_backward=None, preserve_scale=True):
-        """
+    
+    if debug:
+        print(f"lin_comb is\n{lin_comb}")
 
-        Args:
-            input_name: name of lin-comb to encode to on
-            diff_output_name: name of lin-comb into which to encode everything EXCEPT the constant offset term.
-                               This lin-comb has only non-negative coefficients.
-            offset_output_name: name of the lin-comb to encode the constant offset term.
-                                This lin-comb may have coefficients of any sign.
-            pass_through: whether or not to pass metadata in the input to the output (or vice versa).
-                          If True, then pass everything through.
-                          If False, then pass nothing through.
-                          If list, then pass through dict items whose names are in the list
-        """
-        
-        super().__init__(pass_forward, pass_backward)
-        self.input_name = input_name
-        self.diff_output_name = diff_output_name
-        self.offset_output_name = offset_output_name
-        self.common_output_name = diff_output_name if diff_output_name==offset_output_name else None
-        self.preserve_scale = preserve_scale
+    if len(lin_comb) == 0:
+        return LinComb()
+
+    assert len(lin_comb) >= 1
+
+    assert lin_comb.is_consolidated() # Note that LinComb does not consolidate elements, but our use case should only encounter conslolidated elements anyway! Or so we think. If that is not so, we need to know about it here!
+
+    # Sort by coefficient in linear combination, big -> small
+    # We need a list below as we will consume it twice when generating the diff_lin_comb
+    sorted_lin_comb = sorted(zip(lin_comb.coeffs, lin_comb.basis_vecs), key=lambda x: x[0], reverse=True)
+
+    if debug:
+        print(f"sorted_lin_comb is\n{sorted_lin_comb}")
+
+    coeffs = [ x for x, _ in sorted_lin_comb ]
+    basis_vecs = [ x for _ , x in sorted_lin_comb ]
+
+    if preserve_scale:
+        diff_lin_comb = LinComb(MonoLinComb((fac := (i+1))*(x-y), sum(basis_vecs[:i+1], start=0*basis_vecs[0]+Fraction())/fac) for i, (x,y) in enumerate(pairwise(coeffs)))
+        offset_mono_lin_comb = MonoLinComb((fac := len(basis_vecs))*coeffs[-1], sum(basis_vecs, start=0*basis_vecs[0]+Fraction())/fac)
+    else:
+        diff_lin_comb = LinComb(MonoLinComb((x-y), sum(basis_vecs[:i+1], start=0*basis_vecs[0])) for i, (x,y) in enumerate(pairwise(coeffs)))
+        offset_mono_lin_comb = MonoLinComb(coeffs[-1], sum(basis_vecs, start=0*basis_vecs[0]))
+
+    if debug:
+        print(f"diff_lin_comb is\n{diff_lin_comb}")
+        print(f"offset_mono_lin_comb is\n{offset_mono_lin_comb}")
+
+    if return_offset_separately:
+        ans = diff_lin_comb, offset_mono_lin_comb
+    else:
+        ans = diff_lin_comb + offset_mono_lin_comb
+
+    """
+    No need to do the following, but conceptually useful as documentation as it shows us one of the things
+    that this subroute intends to achieve:
+    """
+    if use_assertion_self_test:
+        assert np.allclose( lin_comb.to_numpy_array().astype(float), (diff_lin_comb + offset_mono_lin_comb).to_numpy_array().astype(float))
+
+    if debug:
+        print(f"About to return \n{ans}")
+
+    return ans
+
+def simplex_1_preprocess_steps(set_array : np.array, 
+                               preserve_scale_in_step_1=False,
+                               preserve_scale_in_step_2=True,
+                               canonicalise=False,
+                               use_assertions=False,
+                               debug=False):
+
+    """
+    Step 1: 
+
+    Turn the array (which represents a set) into a linear combination of coefficients and Eji basis elements.
+    Conceptually this step is turning:
+
+       set_array = [[2,8],[4,5]]
+
+    into
+
+       lin_comb_0 = 2 * [[1,0],[0,0]] + 8 * [[0,1],[0,0]] + 4 * [[0,0],[1,0]] + 5 * [[0,0],[0,1]]
+
+    """
+
+    lin_comb_0 = array_to_lin_comb(set_array)
+
+    if use_assertions:
+        assert np.allclose(set_array.astype(float), lin_comb_0.to_numpy_array().astype(float))
 
 
-    def encode(self, input_dict, pass_through=None, debug=False):
+    """
+    Step 2:
+
+    Re-write lin_comb_0 as a sum of the offset (which is the minimum coefficient times some perm-invariant 
+    basis element like (say)[[1,1],[1,1]] and some (so called) differences.  
+    The latter are a set of non-negative coefficients times other basis vectors only 
+    containing zeros and ones.  Conceptually this step is turning:
+
+       lin_comb_0 = 2 * [[1,0],[0,0]] + 8 * [[0,1],[0,0]] + 4 * [[0,0],[1,0]] + 5 * [[0,0],[0,1]]
+
+    into
+
+       lin_comb_1 + offset
+
+    where the first differences are:
+    
+        lin_comb_1 = (8-5) * [[0,1],[0,0]]
+                   + (5-4) * [[0,1],[0,1]]  
+                   + (4-2) * [[0,1],[1,1]] 
+
+    and where the offset is:
+
+        offset = 2 * [[1,1],[1,1]]
+
+    The above example assumed that preserve_scale=False is supplied to barycentric_subdivide, and that thus
+    the one-norm of the basis vecs in the linear combination is growing as you go down the list, rather than
+    constant as it would be if preserve_scale=True had been used instead.
+    """
+
+    lin_comb_1_first_diffs, offset = barycentric_subdivide(lin_comb_0, return_offset_separately=True, preserve_scale=preserve_scale_in_step_1, use_assertion_self_test=True)
+
+    if use_assertions:
+        assert np.allclose(set_array.astype(float), (lin_comb_1_first_diffs+offset).to_numpy_array().astype(float))
+
+    """
+    Step 3:
+
+    Now we do a barycentric subdivision of lin_comb_1, storing the answer in lin_comb_2.  
+    The purpose of this step is to make the resulting basis vectors sufficiently complicated that the
+    process of canonicalise them will allow the set of all vertices to retain enough information that the
+    canonicalisation process can be undone in all the materially important ways - according to PKH claim..
+    [Provably the canonicalisation process would delete information if it were applied to lin_comb_1 directly.] 
+
+    In principle this subdivision should be done with preserve_scale=True (as the vertices of mid-points of 
+    simplex edges are things like (v1+v2)/2 not (v1+v2).  However, since this introduces a lot of fractions 
+    into the output, a lot of debugging is done with preserve_scale=False.
+    """
+
+    lin_comb_2_second_diffs = barycentric_subdivide(lin_comb_1_first_diffs, return_offset_separately=False, preserve_scale=preserve_scale_in_step_2, use_assertion_self_test=True)
+
+    if use_assertions:
+        assert np.allclose(set_array.astype(float), (lin_comb_2_second_diffs + offset).to_numpy_array().astype(float))
+
+    if not canonicalise:
+        return lin_comb_2_second_diffs, offset
+
+
+    """
+    Step 4:
+
+    Canonicalise the basis vectors.
+
+    We hope this step is a bijection (given the domain).  PKH claims it is, but I am suspicious. Claim is being tested!
+    """
+
+    lin_comb_3_canonical = LinComb(( MonoLinComb(coeff, tools.sort_np_array_rows_lexicographically(basis_vec)) for coeff, basis_vec in zip(lin_comb_2_second_diffs.coeffs, lin_comb_2_second_diffs.basis_vecs) ))
+
+    return lin_comb_3_canonical, offset
+
+def simplex_2_preprocess_steps(set_array : np.array, 
+                               preserve_scale_in_step_1=False,
+                               preserve_scale_in_step_2=True,
+                               canonicalise=False,
+                               use_assertions=False,
+                               debug=False):
+
+    if debug:
+        print(f"simplex_2_preprocess_steps was asked to encode {set_array}")
+
+    n,k = set_array.shape
+
+    """
+    Step 1: 
+
+    Turn the array (which represents a set) into a linear combination of coefficients and Eji basis elements, separated by component.
+    Conceptually this step is turning:
+
+       set_array = [[2,8],[4,5]]
+
+    into
+
+       lin_comb_0[0] = 2 * [[1,0],[0,0]] + 4 * [[0,0],[1,0]]  # "x"-components
+       lin_comb_0[1] = 8 * [[0,1],[0,0]] + 5 * [[0,0],[0,1]]  # "y"-components
+
+    """
+
+    lin_comb_0 = [ array_to_lin_comb(set_array, fixed_axes = {1:cpt_index}) for cpt_index in range(k) ]
+    if debug:
+        print(f"lin_comb_0 was {lin_comb_0}")
+    if use_assertions:
+        assert np.allclose(set_array.astype(float), LinComb(lin_comb_0).to_numpy_array().astype(float))
+
+    """
+    Step 2:
+
+    Re-write each element of lin_comb_0 as a sum of an offset (which is the minimum coefficient times a 
+    perm-invariant element like (say) [[1,0],[1,0]] and some (so called) differences.  
+    The latter are a set of non-negative coefficients times other basis vectors only 
+    containing zeros and ones.  Conceptually this step is turning:
+
+       lin_comb_0[0] = 2 * [[1,0],[0,0]] + 4 * [[0,0],[1,0]]  # "x"-components, and
+       lin_comb_0[1] = 8 * [[0,1],[0,0]] + 5 * [[0,0],[0,1]]  # "y"-components
+
+    into
+
+       lin_comb_1 + offset
+
+    where the first differences are:
+    
+        lin_comb_1  = (4-2) * [[1,0],[0,0]];    offset  = 2 * [[1,0], [1,0]]   # and
+        lin_comb_1 += (8-5) * [[0,1],[0,0]];    offset += 2 * [[0,1], [0,1]] 
+
+    The above example assumed that preserve_scale=False is supplied to barycentric_subdivide, and that thus
+    the one-norm of the basis vecs in the linear combination is growing as you go down the list, rather than
+    constant as it would be if preserve_scale=True had been used instead.
+    """
+    
+    lin_comb_1_first_diffs = [None] * k
+    offsets = [None] *k
+
+    assert len(lin_comb_0) == k
+    assert len(lin_comb_1_first_diffs) == k
+    assert len(offsets) == k
+
+    for i in range(k):
+        lin_comb_1_first_diffs[i], offsets[i] = barycentric_subdivide(lin_comb_0[i], return_offset_separately=True, preserve_scale=preserve_scale_in_step_1, use_assertion_self_test=True)
         if debug:
-            print(f"input_dict is\n{input_dict}")
+            print(f"lin_comb_1[{i}] was {lin_comb_1_first_diffs[i]}")
+            print(f"offsets[{i}] was {offsets[i]}")
+            print()
 
-        output_dict = self.get_default_output_dict(input_dict, debug)
+    # Here is the merge phase:
+    lin_comb_1_first_diffs = LinComb(lin_comb_1_first_diffs)
+    offsets = LinComb(offsets)
 
-        if not self.input_name in input_dict:
-            raise ValueError(f"Expected {self.input_name} in {input_dict}.")
+    if debug:
+        print(f"After the merge phase lin_comb_1 was {lin_comb_1_first_diffs}")
+        print(f"offsets was {offsets}")
+        print()
 
-        input_lin_comb = input_dict[self.input_name]
-        """
-        A linear combination is assumed to be represented as a list of pairs -- with the first element of each pair
-        being the coefficient and the second element of each pair being the corresponding basis vector. I.e.
-        [ (2, "i"), (1, "j"), (3, "k")]
-        might represent the vector (2,1,3) with respect to the usual cartesian basis.
-        """
+    if use_assertions:
+        assert np.allclose(set_array.astype(float), (lin_comb_1_first_diffs+offsets).to_numpy_array().astype(float))
         if debug:
-            print(f"input_lin_comb is\n{input_lin_comb}")
+            print("Happy after step 2")
 
-        if not input_lin_comb:
-            # List for p is empty, so
-            if self.common_output_name:
-                output_dict[self.common_output_name] = list()
-            else:
-                output_dict[self.diff_output_name] = list()
-                output_dict[self.offset_output_name] = list()
+    """
+    Step 3:
 
-            if debug:
-                print(f"About to return \n{output_dict}")
-            return output_dict
+    Now we do a barycentric subdivision of lin_comb_1, storing the answer in lin_comb_2.  
+    The purpose of this step is to make the resulting basis vectors sufficiently complicated that the
+    process of canonicalise them will allow the set of all vertices to retain enough information that the
+    canonicalisation process can be undone in all the materially important ways - according to PKH claim..
+    [Provably the canonicalisation process would delete information if it were applied to lin_comb_1 directly.] 
 
-        assert len(input_lin_comb) >= 1
+    In principle this subdivision should be done with preserve_scale=True (as the vertices of mid-points of 
+    simplex edges are things like (v1+v2)/2 not (v1+v2).  However, since this introduces a lot of fractions 
+    into the output, a lot of debugging is done with preserve_scale=False.
+    """
 
-        # Sort by coefficient in linear combination, big -> small
-        # We need a list below as we will consume it twice when generating the diff_lin_comb
-        sorted_lin_comb = sorted(input_lin_comb, key=lambda x: x[0], reverse=True)
+    lin_comb_2_second_diffs = barycentric_subdivide(lin_comb_1_first_diffs, return_offset_separately=False, preserve_scale=preserve_scale_in_step_2, use_assertion_self_test=True)
+
+    if use_assertions:
+        assert np.allclose(set_array.astype(float), (lin_comb_2_second_diffs + offsets).to_numpy_array().astype(float))
         if debug:
-            print(f"sorted_lin_comb is\n{sorted_lin_comb}")
+            print("Happy after step 3")
 
-        coeffs = [ x for x, _ in sorted_lin_comb ]
-        basis_vecs = [x for _ , x in sorted_lin_comb]
+    if not canonicalise:
+        return lin_comb_2_second_diffs, offsets
 
-        """
-        class ZeroObject(object):
-            def __add__(self, other):
-                return other
-        """
 
-        if self.preserve_scale:
-            diff_lin_comb = list(((fac := (i+1))*(x-y), sum(basis_vecs[:i+1], start=0*basis_vecs[0]+Fraction())/fac) for i, (x,y) in enumerate(pairwise(coeffs)))
-            offset_lin_comb = [((fac := len(basis_vecs))*coeffs[-1], sum(basis_vecs, start=0*basis_vecs[0]+Fraction())/fac)]
-        else:
-            diff_lin_comb = list(((x-y), sum(basis_vecs[:i+1], start=0*basis_vecs[0])) for i, (x,y) in enumerate(pairwise(coeffs)))
-            offset_lin_comb = [(coeffs[-1], sum(basis_vecs, start=0*basis_vecs[0]))]
+    """
+    Step 4:
 
-        if debug:
-            print(f"diff_lin_comb is\n{diff_lin_comb}")
-            print(f"offset_lin_comb is\n{offset_lin_comb}")
+    Canonicalise the basis vectors.
 
-        if self.common_output_name:
-            output_dict[self.common_output_name] = diff_lin_comb + offset_lin_comb
-        else:
-            output_dict[self.diff_output_name] = diff_lin_comb
-            output_dict[self.offset_output_name] = offset_lin_comb
-        if debug:
-            print(f"About to return \n{output_dict}")
+    We hope this step is a bijection (given the domain).  PKH claims it is, but I am suspicious. Claim is being tested!
+    """
 
-        return output_dict
+    lin_comb_3_canonical = LinComb(( MonoLinComb(coeff, tools.sort_np_array_rows_lexicographically(basis_vec)) for coeff, basis_vec in zip(lin_comb_2_second_diffs.coeffs, lin_comb_2_second_diffs.basis_vecs) ))
+
+    return lin_comb_3_canonical, offsets
+
+
+
+
+    
 
