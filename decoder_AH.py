@@ -196,15 +196,15 @@ class Decoder():
         ejis = [eji.to_array() for eji in ejis]
         print(deltas)
         for i in range(len(deltas)):
-            ans += deltas[i]*ejis[i]
+            ans += (deltas[i]/sum(ejis[i].flatten()))*ejis[i]
         
         return ans
 
 
 if __name__ == "__main__":
     n = 2
-    k = 2
-    some_input = np.asarray([[4, 2],[-3, 5]])
+    k = 3
+    some_input = np.asarray([[4, 2, 1],[3, 4, 2]])
     embedder = simplex2.Embedder()
     output = embedder.embed(some_input)
 
@@ -216,5 +216,5 @@ if __name__ == "__main__":
     print("Decoding then gives:")
 
     decoder = Decoder()
-    decoded_input = decoder.decode(2, 2, output[0])
+    decoded_input = decoder.decode(n, k, output[0])
     print(f"{decoded_input}")
