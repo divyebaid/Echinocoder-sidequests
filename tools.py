@@ -137,9 +137,9 @@ def permute_columns_except_first(arr):
     variable_cols = arr[:, 1:]
 
     # Generate permutations for each column independently as generators
-    print("Making all perms ... ")
+    # print("Making all perms ... ")
     all_perms = (distinct_permutations(variable_cols[:, i]) for i in range(variable_cols.shape[1]))
-    print("                 ... done.")
+    # print("                 ... done.")
 
     # Create the product of all column permutations (as a generator)
     #print("Making all products ... ")
