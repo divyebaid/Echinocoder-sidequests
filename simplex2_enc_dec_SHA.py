@@ -66,7 +66,7 @@ class Hash_EncDec():
             min_diff = diffs.index(min(diffs))
             fixed_array = arrays[min_diff]
             new_lin_comb[i][1] = fixed_array
-            new_lin_comb[i][0] /= (indices[i]+1)
+            #new_lin_comb[i][0] /= (indices[i]+1)
         
         return new_lin_comb
 
